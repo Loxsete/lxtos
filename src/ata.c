@@ -19,6 +19,8 @@
 
 #define ATA_CMD_IDENTIFY 0xEC // command define
 #define ATA_CMD_READ_PIO 0x20 // first sector read pio
+#define ATA_CMD_WRITE_PIO 0x30 // write sector pio
+#define ATA_CMD_CACHE_FLUSH 0xE7 
 
 #define ATA_SR_BSY 0x80 // disk busy
 #define ATA_SR_DRQ 0x08
@@ -98,4 +100,30 @@ int ata_read_sector(int bus, ata_drive_t drive, uint32_t lba, uint16_t *buffer) 
         buffer[i] = inw(base + ATA_REG_DATA);
 
     return 0;
+}
+
+
+// ctrl c; ctrl v; xD
+int ata_write_sector(int bus, ata_drive_t driver, uint32_t lba, uint16_t *buffer) {
+    uint16_t base = bases[bus];
+
+    outb(base + ATA_REG_HDDEVSEL, 0x0E | (driver << 4) | ((lba >> 24) & 0x0F));
+    io_wait();
+    outb(base + ATA_REG_SECCOUNT, 1);
+    outb(base + ATA_REG_LBA0, (uint8_t)(lba));
+    outb(base + ATA_REG_LBA1, (uint8_t)(lba >> 8));
+    outb(base + ATA_REG_LBA2, (uint8_t)(lba >> 16));
+    outb(base + ATA_REG_COMMAND, ATA_CMD_WRITE_PIO);
+
+    ata_wait_busy(base);
+    if (ata_wait_drq(base) < 0) return -1; // error
+
+    for (int i = 0; i < 256; i++)
+        outw(base + ATA_REG_DATA, buffer[i]); // write 256 words
+
+    outb(base + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
+    ata_wait_busy(base);
+
+    return 0; 
+
 }
