@@ -8,6 +8,7 @@ uint64_t        fb_height;
 static uint64_t fb_pitch;
 static uint16_t fb_bpp;
 static uint32_t fb_bytes_per_pixel;
+
 uint32_t fb_cursor_x = 0;
 uint32_t fb_cursor_y = 0;
 
@@ -54,13 +55,8 @@ void fb_puts(uint32_t x, uint32_t y, const char *s, uint32_t fg, uint32_t bg)
 {
     uint32_t cx = x;
     while (*s) {
-        if (*s == '\n') {
-            cx  = x;
-            y  += FONT_HEIGHT;
-        } else {
-            fb_putchar(cx, y, *s, fg, bg);
-            cx += FONT_WIDTH;
-        }
+        if (*s == '\n') { cx = x; y += FONT_HEIGHT; }
+        else { fb_putchar(cx, y, *s, fg, bg); cx += FONT_WIDTH; }
         s++;
     }
 }
@@ -70,14 +66,12 @@ void fb_scroll(uint32_t bg)
     uint8_t *dst = (uint8_t *)fb_addr;
     uint8_t *src = (uint8_t *)fb_addr + FONT_HEIGHT * fb_pitch;
     uint64_t rows_to_move = fb_height - FONT_HEIGHT;
-
     for (uint64_t row = 0; row < rows_to_move; row++) {
         uint8_t *d = dst + row * fb_pitch;
         uint8_t *s = src + row * fb_pitch;
         for (uint64_t col = 0; col < fb_width * fb_bytes_per_pixel; col++)
             d[col] = s[col];
     }
-
     for (uint64_t row = rows_to_move; row < fb_height; row++) {
         uint8_t *p = dst + row * fb_pitch;
         for (uint64_t col = 0; col < fb_width; col++) {
@@ -102,10 +96,7 @@ void fb_newline(uint32_t bg)
 
 void fb_putchar_cursor(char c, uint32_t fg, uint32_t bg)
 {
-    if (c == '\n') {
-        fb_newline(bg);
-        return;
-    }
+    if (c == '\n') { fb_newline(bg); return; }
     if (c == '\b') {
         if (fb_cursor_x >= FONT_WIDTH) {
             fb_cursor_x -= FONT_WIDTH;
@@ -117,4 +108,60 @@ void fb_putchar_cursor(char c, uint32_t fg, uint32_t bg)
     fb_cursor_x += FONT_WIDTH;
     if (fb_cursor_x + FONT_WIDTH > (uint32_t)fb_width)
         fb_newline(bg);
+}
+
+static void fb_putcodepoint(uint32_t cp, uint32_t fg, uint32_t bg)
+{
+    if (cp >= 0x2800 && cp <= 0x28FF) {
+        uint8_t dots = cp & 0xFF;
+        int dot_col[8] = {0,0,0,1,1,1,0,1};
+        int dot_row[8] = {0,1,2,0,1,2,3,3};
+        int dw = FONT_WIDTH  / 2;
+        int dh = FONT_HEIGHT / 4;
+        for (int y = 0; y < FONT_HEIGHT; y++)
+            for (int x = 0; x < FONT_WIDTH; x++)
+                fb_putpixel(fb_cursor_x + x, fb_cursor_y + y, bg);
+        for (int d = 0; d < 8; d++) {
+            if (!(dots & (1 << d))) continue;
+            int px = fb_cursor_x + dot_col[d] * dw + dw / 4;
+            int py = fb_cursor_y + dot_row[d] * dh + dh / 4;
+            for (int y = 0; y < dh - 1; y++)
+                for (int x = 0; x < dw - 1; x++)
+                    fb_putpixel(px + x, py + y, fg);
+        }
+        fb_cursor_x += FONT_WIDTH;
+        if (fb_cursor_x + FONT_WIDTH > (uint32_t)fb_width)
+            fb_newline(bg);
+        return;
+    }
+    char c = (cp < 128) ? (char)cp : '?';
+    fb_putchar_cursor(c, fg, bg);
+}
+
+static uint32_t utf8_cp   = 0;
+static int      utf8_left = 0;
+
+void fb_putchar_cursor_utf8(char byte, uint32_t fg, uint32_t bg)
+{
+    uint8_t b = (uint8_t)byte;
+    if (b < 0x80) {
+        utf8_left = 0;
+        fb_putchar_cursor(byte, fg, bg);
+    } else if (b >= 0xF0) {
+        utf8_cp   = b & 0x07;
+        utf8_left = 3;
+    } else if (b >= 0xE0) {
+        utf8_cp   = b & 0x0F;
+        utf8_left = 2;
+    } else if (b >= 0xC0) {
+        utf8_cp   = b & 0x1F;
+        utf8_left = 1;
+    } else {
+        if (utf8_left > 0) {
+            utf8_cp = (utf8_cp << 6) | (b & 0x3F);
+            utf8_left--;
+            if (utf8_left == 0)
+                fb_putcodepoint(utf8_cp, fg, bg);
+        }
+    }
 }

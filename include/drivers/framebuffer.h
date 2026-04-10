@@ -9,6 +9,7 @@ void fb_puts(uint32_t x, uint32_t y, const char *s, uint32_t fg, uint32_t bg);
 void fb_putchar_cursor(char c, uint32_t fg, uint32_t bg);
 void fb_scroll(uint32_t bg);
 void fb_newline(uint32_t bg);
+void fb_putchar_cursor_utf8(char byte, uint32_t fg, uint32_t bg);
 
 #define COLOR_BG     0x0D0D1A
 #define COLOR_FG     0xFFFFFF

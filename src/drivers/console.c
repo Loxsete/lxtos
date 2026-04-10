@@ -33,7 +33,7 @@ static int64_t console_write(vfs_node_t *node, const void *buf, uint64_t offset,
     }
 
     for (uint64_t i = 0; i < size; i++)
-        fb_putchar_cursor(in[i], COLOR_FG, COLOR_BG);
+        fb_putchar_cursor_utf8(in[i], COLOR_FG, COLOR_BG);
 
     return size;
 }

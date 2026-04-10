@@ -3,7 +3,6 @@
 #include <limine.h>
 #include <drivers/framebuffer.h>
 #include <drivers/keyboard.h>
-#include <console/shell.h>
 #include <lib/kmalloc.h>
 #include <fs/vfs.h>
 #include <fs/tmpfs.h>
@@ -14,6 +13,12 @@
 #include <console/kprint.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
+#include <arch/x86_64/gdt.h>
+#include <arch/x86_64/idt.h>
+#include <arch/x86_64/tss.h>
+#include <arch/x86_64/usermode.h>
+
+extern void user_shell(void);
 
 __attribute__((used, section(".requests")))
 static volatile struct limine_framebuffer_request fb_request = {
@@ -25,14 +30,7 @@ extern uint8_t _binary_build_initramfs_cpio_start[];
 extern uint8_t _binary_build_initramfs_cpio_end[];
 
 pml4_t kernel_pml4;
-
-void draw_banner(void)
-{
-    fb_cursor_x = 0;
-    fb_cursor_y = 0;
-    kputs_col("lxtos kernel\n", COLOR_PROMPT);
-    kputs("type 'help' for commands\n");
-}
+static uint8_t user_stack[8192];
 
 void vfs_setup(void *initramfs_data, uint64_t initramfs_size)
 {
@@ -76,6 +74,10 @@ void _start(void)
 
     pmm_init();
     kernel_pml4 = vmm_init();
+    gdt_init();
+    tss_init();
+    idt_init();
+    __asm__ volatile("sti");
 
     ata_init();
     kb_init();
@@ -83,7 +85,11 @@ void _start(void)
         _binary_build_initramfs_cpio_start,
         _binary_build_initramfs_cpio_end - _binary_build_initramfs_cpio_start
     );
-    draw_banner();
-    shell_run();
+
+    kputs_col("lxtos kernel\n", COLOR_PROMPT);
+
+    jump_usermode((uint64_t)user_shell,
+                  (uint64_t)(user_stack + sizeof(user_stack)));
+
     for (;;) __asm__ volatile("hlt");
 }

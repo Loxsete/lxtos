@@ -1,19 +1,29 @@
 CC = gcc
 LD = ld
+AS = nasm
 CFLAGS = -m64 -ffreestanding -fno-stack-protector -fno-pic -fno-pie \
          -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
          -mcmodel=kernel \
          -nostdlib \
          -Wall -Wextra -O2 \
          -Iinclude
+ASFLAGS = -f elf64
 LDFLAGS = -m elf_x86_64 -nostdlib -static -T linker.ld -z max-page-size=0x1000
-KERNEL = kernel.elf
-ISO = lxtos.iso
+KERNEL   = kernel.elf
+ISO      = lxtos.iso
 DISK_IMG = disk.img
 LIMINE_REPO = https://codeberg.org/Limine/Limine.git
-LIMINE_DIR = limine
-SRCS = $(shell find src -name '*.c')
-OBJS = $(patsubst src/%.c, build/%.o, $(SRCS))
+LIMINE_DIR  = limine
+
+SRCS     = $(shell find src -name '*.c')
+USR_SRCS = $(shell find userspace/src -name '*.c')
+ASM_SRCS = $(shell find src -name '*.asm')
+
+C_OBJS     = $(patsubst src/%.c,           build/%.o,        $(SRCS))
+USR_C_OBJS = $(patsubst userspace/src/%.c, build/user/%.o,   $(USR_SRCS))
+ASM_OBJS   = $(patsubst src/%.asm,         build/%_asm.o,    $(ASM_SRCS))
+
+OBJS = $(C_OBJS) $(USR_C_OBJS) $(ASM_OBJS)
 
 .PHONY: all clean run iso initramfs limine disk
 
@@ -26,6 +36,14 @@ $(KERNEL): $(OBJS) build/initramfs_bin.o
 build/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+build/user/%.o: userspace/src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -Iuserspace/include -c $< -o $@
+
+build/%_asm.o: src/%.asm
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
 
 initramfs:
 	@mkdir -p build initramfs/bin initramfs/etc

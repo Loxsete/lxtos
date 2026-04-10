@@ -127,8 +127,8 @@ pml4_t vmm_init(void)
         vmm_map(pml4, hhdm + p, p, KERNEL_FLAGS);
 
     for (uint64_t off = 0; off < 0x4000000ULL; off += PAGE_SIZE)
-        vmm_map(pml4, k_virt + off, k_phys + off, KERNEL_FLAGS);
-
+        vmm_map(pml4, k_virt + off, k_phys + off, USER_FLAGS);
+        
     vmm_switch(pml4);
     kputs("vmm: init done\n");
 
