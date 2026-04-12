@@ -1,10 +1,10 @@
 Small kernel (j4f)
-```
+```sh
 python3 build.py run
 ```
 
 Or if you like fuck with Make, you can:
-```
+```sh
 make run
 ```
 
