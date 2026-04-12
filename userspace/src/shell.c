@@ -7,6 +7,7 @@
 #define MAX_INPUT 256
 
 static char cwd[MAX_PATH] = "/";
+static char hostname[256];
 
 static void resolve_path(const char *input, char *result)
 {
@@ -30,6 +31,15 @@ static void print_ascii(void)
         buf[n] = 0;
         u_puts(buf);
     }
+}
+
+static void read_hostname(const char *path, char *result)
+{
+    static char buf[256];
+    int64_t n = sys_read("/etc/hostname", buf, sizeof(buf) - 1);
+    if (buf[n-1] == '\n') {buf[n-1] = 0;}
+    else { buf[n] = 0; }
+    u_strcpy(result, buf, 256);
 }
 
 static void cmd_ls(const char *arg)
@@ -148,9 +158,14 @@ void user_shell(void)
     print_ascii();
 
     while (1) {
+        read_hostname("/etc/hostname", hostname);
+
         u_puts("\n[");
+        u_puts(hostname);
+        u_puts(":");
         u_puts(cwd);
         u_puts("] >> ");
+
         u_gets(input, sizeof(input));
         if (!input[0]) continue;
 
