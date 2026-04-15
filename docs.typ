@@ -34,8 +34,6 @@
 #pagebreak()
 = Memory Management (PMM) <memory-management-pmm>
 
-== Info
-
 *Path:*
 - `include/mm/pmm.h`
 - `src/mm/pmm.c`
