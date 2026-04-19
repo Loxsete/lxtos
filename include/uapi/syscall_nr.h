@@ -12,3 +12,6 @@
 #define SYS_RM       9
 #define SYS_READ     10
 #define SYS_WRITE    11
+#define SYS_EXEC     12
+#define SYS_FSIZE    13
+

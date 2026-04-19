@@ -11,25 +11,69 @@ LD = "ld"
 AS = "nasm"
 
 CFLAGS = [
-    "-m64", "-ffreestanding", "-fno-stack-protector",
-    "-fno-pic", "-fno-pie", "-mno-red-zone",
-    "-mno-mmx", "-mno-sse", "-mno-sse2",
-    "-mcmodel=kernel", "-nostdlib",
-    "-Wall", "-Wextra", "-O2",
+    "-m64",
+    "-ffreestanding",
+    "-fno-stack-protector",
+    "-fno-pic",
+    "-fno-pie",
+    "-mno-red-zone",
+    "-mno-mmx",
+    "-mno-sse",
+    "-mno-sse2",
+    "-mcmodel=kernel",
+    "-nostdlib",
+    "-Wall",
+    "-Wextra",
+    "-O2",
     "-Iinclude",
 ]
+
 ASFLAGS = ["-f", "elf64"]
+
 LDFLAGS = [
-    "-m", "elf_x86_64", "-nostdlib", "-static",
-    "-T", "linker.ld", "-z", "max-page-size=0x1000",
+    "-m", "elf_x86_64",
+    "-nostdlib",
+    "-static",
+    "-T", "linker.ld",
+    "-z", "max-page-size=0x1000",
+]
+
+USER_CFLAGS = [
+    "-m64",
+    "-ffreestanding",
+    "-fno-stack-protector",
+    "-fno-pic",
+    "-fno-pie",
+    "-mno-red-zone",
+    "-mno-mmx",
+    "-mno-sse",
+    "-mno-sse2",
+    "-nostdlib",
+    "-Wall",
+    "-Wextra",
+    "-O2",
+    "-Iuserspace/include",
+    "-Iinclude",
+]
+
+USER_LDFLAGS = [
+    "-m", "elf_x86_64",
+    "-nostdlib",
+    "-static",
+    "-T", "userspace/link.ld",
 ]
 
 KERNEL = "kernel.elf"
 ISO = "NocturneOS.iso"
 DISK_IMG = "disk.img"
-
 LIMINE_REPO = "https://codeberg.org/Limine/Limine.git"
 LIMINE_DIR = "limine"
+
+USER_COMMON = [
+    "userspace/src/crt0.asm",
+    "userspace/src/ulib/io.c",
+    "userspace/src/ulib/string.c",
+]
 
 
 def run(cmd, **kwargs):
@@ -58,33 +102,33 @@ def find_files(directory, extension):
     return glob.glob(f"{directory}/**/*{extension}", recursive=True)
 
 
-def get_sources():
-    jobs = []
-    for src in find_files("src", ".c"):
-        rel = os.path.relpath(src, "src")
-        obj = os.path.join("build", rel[:-2] + ".o")
-        jobs.append(("c", src, obj))
-    for src in find_files("userspace/src", ".c"):
-        rel = os.path.relpath(src, "userspace/src")
-        obj = os.path.join("build/user", rel[:-2] + ".o")
-        jobs.append(("user_c", src, obj))
-    for src in find_files("src", ".asm"):
-        rel = os.path.relpath(src, "src")
-        obj = os.path.join("build", rel[:-4] + "_asm.o")
-        jobs.append(("asm", src, obj))
-    return jobs
+def build_user_binary(out_path, sources):
+    os.makedirs("build/ubin", exist_ok=True)
+    objs = []
+    for src in sources:
+        safe = src.replace("/", "_").replace(".", "_")
+        obj = f"build/ubin/{safe}.o"
+        objs.append(obj)
+        if not newer(src, obj):
+            continue
+        if src.endswith(".c"):
+            run([CC] + USER_CFLAGS + ["-c", src, "-o", obj])
+        elif src.endswith(".asm"):
+            run([AS] + ASFLAGS + [src, "-o", obj])
+    run([LD] + USER_LDFLAGS + ["-o", out_path] + objs)
 
 
-def populate_disk():
-    if not os.path.exists(DISK_IMG):
-        run(["dd", "if=/dev/zero", f"of={DISK_IMG}", "bs=1M", "count=64"])
-        run(["mkfs.ext2", "-b", "1024", DISK_IMG])
-    sh("mkdir -p /tmp/NocturneOS_mnt")
-    sh(f"sudo mount -o loop {DISK_IMG} /tmp/NocturneOS_mnt")
-    sh("sudo mkdir -p /tmp/NocturneOS_mnt/etc")
-    sh("echo 'hello from ext2' | sudo tee /tmp/NocturneOS_mnt/etc/hello.txt")
-    sh("echo 'NocturneOS' | sudo tee /tmp/NocturneOS_mnt/etc/hostname")
-    sh(f"sudo umount /tmp/NocturneOS_mnt")
+def build_userspace():
+    os.makedirs("initramfs/bin", exist_ok=True)
+    build_user_binary(
+        "initramfs/bin/shell",
+        USER_COMMON + ["userspace/src/shell.c"],
+    )
+    build_user_binary(
+        "initramfs/bin/hello",
+        USER_COMMON + ["userspace/src/hello.c"],
+    )
+
 
 def build_initramfs():
     os.makedirs("build", exist_ok=True)
@@ -92,9 +136,23 @@ def build_initramfs():
     os.makedirs("initramfs/etc", exist_ok=True)
     with open("initramfs/etc/osname", "w") as f:
         f.write("NocturneOS\n")
+    build_userspace()
     sh("cd initramfs && find . | cpio -o -H newc > ../build/initramfs.cpio")
     run([LD, "-r", "-b", "binary",
          "build/initramfs.cpio", "-o", "build/initramfs_bin.o"])
+
+
+def get_sources():
+    jobs = []
+    for src in find_files("src", ".c"):
+        rel = os.path.relpath(src, "src")
+        obj = os.path.join("build", rel[:-2] + ".o")
+        jobs.append(("c", src, obj))
+    for src in find_files("src", ".asm"):
+        rel = os.path.relpath(src, "src")
+        obj = os.path.join("build", rel[:-4] + "_asm.o")
+        jobs.append(("asm", src, obj))
+    return jobs
 
 
 def compile_sources():
@@ -107,8 +165,6 @@ def compile_sources():
             continue
         if kind == "c":
             run([CC] + CFLAGS + ["-c", src, "-o", obj])
-        elif kind == "user_c":
-            run([CC] + CFLAGS + ["-Iuserspace/include", "-c", src, "-o", obj])
         elif kind == "asm":
             run([AS] + ASFLAGS + [src, "-o", obj])
     return obj_files
@@ -119,14 +175,17 @@ def build_kernel():
     obj_files = compile_sources()
     obj_files.append("build/initramfs_bin.o")
     run([LD] + LDFLAGS + ["-o", KERNEL] + obj_files)
-    if os.path.exists(LIMINE_DIR):
-        sh(f"rm -rf {LIMINE_DIR}")
 
 
 def clone_limine():
     if not os.path.exists(LIMINE_DIR):
-        run(["git", "clone", "--branch=v11.x-binary", "--depth=1",
-             LIMINE_REPO, LIMINE_DIR])
+        run([
+            "git", "clone",
+            "--branch=v11.x-binary",
+            "--depth=1",
+            LIMINE_REPO,
+            LIMINE_DIR,
+        ])
 
 
 def build_iso():
@@ -143,9 +202,12 @@ def build_iso():
     run([
         "xorriso", "-as", "mkisofs",
         "-b", "boot/limine/limine-bios-cd.bin",
-        "-no-emul-boot", "-boot-load-size", "4", "-boot-info-table",
+        "-no-emul-boot",
+        "-boot-load-size", "4",
+        "-boot-info-table",
         "--efi-boot", "boot/limine/limine-uefi-cd.bin",
-        "-efi-boot-part", "--efi-boot-image",
+        "-efi-boot-part",
+        "--efi-boot-image",
         "--protective-msdos-label",
         "iso_root", "-o", ISO,
     ])
@@ -169,6 +231,18 @@ def run_qemu():
         "-no-reboot",
         "-no-shutdown",
     ])
+
+
+def populate_disk():
+    if not os.path.exists(DISK_IMG):
+        run(["dd", "if=/dev/zero", f"of={DISK_IMG}", "bs=1M", "count=64"])
+        run(["mkfs.ext2", "-b", "1024", DISK_IMG])
+    sh("mkdir -p /tmp/NocturneOS_mnt")
+    sh(f"sudo mount -o loop {DISK_IMG} /tmp/NocturneOS_mnt")
+    sh("sudo mkdir -p /tmp/NocturneOS_mnt/etc")
+    sh("echo 'hello from ext2' | sudo tee /tmp/NocturneOS_mnt/etc/hello.txt")
+    sh("echo 'NocturneOS' | sudo tee /tmp/NocturneOS_mnt/etc/hostname")
+    sh(f"sudo umount /tmp/NocturneOS_mnt")
 
 
 def clean():

@@ -5,6 +5,7 @@
 #include <drivers/framebuffer.h>
 #include <lib/kstring.h>
 #include <fs/vfs.h>
+#include <exec/elf.h>
 
 uint64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
 {
@@ -12,18 +13,19 @@ uint64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
     case SYS_PUTCHAR:
         fb_putchar_cursor((char)a1, 0xFFFFFF, 0x0D0D1A);
         return 0;
-    case SYS_PUTS:
+    case SYS_PUTS: {
         const char *s = (const char *)a1;
         while (*s)
             fb_putchar_cursor_utf8(*s++, 0xFFFFFF, 0x0D0D1A);
         return 0;
+    }
     case SYS_GETCHAR:
         return kb_getchar();
     case SYS_EXIT:
-        __asm__ volatile("cli");
+        elf_exec("/bin/shell");
         for (;;) __asm__ volatile("hlt");
     case SYS_GETS: {
-        char *buf    = (char *)a1;
+        char    *buf = (char *)a1;
         uint64_t max = a2;
         uint64_t i   = 0;
         while (i < max - 1) {
@@ -81,6 +83,13 @@ uint64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
         }
         if (node->flags & VFS_FLAG_DIR) return (uint64_t)-1;
         return (uint64_t)vnode_write(node, data, 0, size);
+    }
+    case SYS_EXEC:
+        return (uint64_t)elf_exec((const char *)a1);
+    case SYS_FSIZE: {
+        vfs_node_t *node = vfs_resolve((const char *)a1);
+        if (!node || (node->flags & VFS_FLAG_DIR)) return (uint64_t)-1;
+        return node->size;
     }
     default:
         return (uint64_t)-1;

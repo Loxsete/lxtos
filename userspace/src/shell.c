@@ -133,6 +133,7 @@ static void cmd_help(void)
     u_puts("  echo <text>\n");
     u_puts("  clear\n");
     u_puts("  exit\n");
+    u_puts("  exec <path>\n");
 }
 
 static int parse(char *line, char *argv[], int max)
@@ -159,7 +160,7 @@ static int parse(char *line, char *argv[], int max)
     return argc;
 }
 
-void user_shell(void)
+void main(void)
 {
     static char input[MAX_INPUT];
 
@@ -221,6 +222,16 @@ void user_shell(void)
                 buf[pos] = 0;
 
                 cmd_write(argv[1], buf);
+            }
+        }
+        else if (!u_strcmp(argv[0], "exec")) {
+            if (argc < 2) {
+                u_puts("\nusage: exec <path>\n");
+            } else {
+                char path[MAX_PATH];
+                resolve_path(argv[1], path);
+                int64_t r = sys_exec(path);
+                if (r != 0) u_puts("\nexec failed\n");
             }
         }
         else {
