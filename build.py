@@ -4,6 +4,8 @@
 import glob
 import os
 import sys
+import argparse
+
 
 CC = "gcc"
 LD = "ld"
@@ -27,19 +29,18 @@ CFLAGS_LIST = [
 LDFLAGS_LIST = [
     "-m", "elf_x86_64",
     "-nostdlib",
-    "-static",
-    "-T", "linker.ld"
+    "-static"
 ]
 ASFLAGS_LIST = [
     "-f", "elf64"
 ]
 
 KERN_CFLAGS_LIST = CFLAGS_LIST + ["-Iinclude", "-mcmodel=kernel"]
-KERN_LDFLAGS_LIST = LDFLAGS_LIST + ["-z", "max-page-size=0x1000"]
+KERN_LDFLAGS_LIST = LDFLAGS_LIST + ["-T", "linker.ld", "-z", "max-page-size=0x1000"]
 KERN_ASFLAGS_LIST = ASFLAGS_LIST
 
 USER_CFLAGS_LIST = CFLAGS_LIST + ["-Iuserspace/include", "-Iinclude"]
-USER_LDFLAGS_LIST = LDFLAGS_LIST
+USER_LDFLAGS_LIST = LDFLAGS_LIST + ["-T", "userspace/link.ld"]
 USER_ASFLAGS_LIST = ASFLAGS_LIST
 
 KERN_CFLAGS = ' '.join(KERN_CFLAGS_LIST)
@@ -51,9 +52,12 @@ USER_LDFLAGS = ' '.join(USER_LDFLAGS_LIST)
 USER_ASFLAGS = ' '.join(USER_ASFLAGS_LIST)
 
 OS_NAME = "NocturneOS"
+HOST_NAME = "hostpc"
+
 KERNEL = "kernel.elf"
-ISO = f"{OS_NAME}.iso"
 DISK_IMG = "disk.img"
+ISO = f"{OS_NAME}.iso"
+ISO_ROOT_DIR = "iso_root"
 
 LIMINE_REPO = "https://codeberg.org/Limine/Limine.git"
 LIMINE_REPO_ARG = "--branch=v11.x-binary --depth=1"
@@ -67,9 +71,10 @@ USER_COMMON = [
 ]
 
 
-def sh(cmd: str, no_exit=False):
-    print(cmd)
-    ret = os.system(cmd)
+def sh(cmd: str, no_exit=False, quiet=False):
+    if not quiet:
+        print(cmd)
+    ret = os.system(f"sh -c \"{cmd}\" {"&> /dev/null" if quiet else ""}")
     if ret != 0:
         print(f"Error: '{cmd}' finished with code {ret}")
         return ret if no_exit else sys.exit(1)
@@ -107,29 +112,35 @@ def build_user_binary(out_path: str, sources: list[str]):
 
 
 def build_userspace():
-    os.makedirs("initramfs/bin", exist_ok=True)
+    os.makedirs("build/initramfs/bin", exist_ok=True)
     build_user_binary(
-        "initramfs/bin/shell",
+        "build/initramfs/bin/shell",
         USER_COMMON + ["userspace/src/shell.c"],
     )
     build_user_binary(
-        "initramfs/bin/hello",
+        "build/initramfs/bin/hello",
         USER_COMMON + ["userspace/src/hello.c"],
     )
 
 
 def build_initramfs():
-    os.makedirs("build", exist_ok=True)
-    os.makedirs("initramfs/bin", exist_ok=True)
-    os.makedirs("initramfs/etc", exist_ok=True)
-    with open("initramfs/etc/osname", "w") as f:
+    os.makedirs("build/initramfs/etc", exist_ok=True)
+    with open("build/initramfs/etc/osname", "w") as f:
         f.write(f"{OS_NAME}\n")
+    with open("build/initramfs/etc/hostname", "w") as f:
+        f.write(f"{HOST_NAME}\n")
+    os.makedirs("build/initramfs/tmp", exist_ok=True)
+    sh("cp data/ascii.txt build/initramfs/tmp/")
+
+
+def initramfs_to_binary():
+    build_initramfs()
     build_userspace()
-    sh("cd initramfs && find . | cpio -o -H newc > ../build/initramfs.cpio")
+    sh("cd build/initramfs && find . | cpio -o -H newc > ../initramfs.cpio")
     sh(f"{LD} -r -b binary build/initramfs.cpio -o build/initramfs_bin.o")
 
 
-def get_sources():
+def get_kernel_sources():
     jobs = []
     for src in find_files("src", ".c"):
         rel = os.path.relpath(src, "src")
@@ -142,8 +153,8 @@ def get_sources():
     return jobs
 
 
-def compile_kernel_sources():
-    jobs = get_sources()
+def build_kernel_binaries():
+    jobs = get_kernel_sources()
     obj_files = []
     for kind, src, obj in jobs:
         obj_files.append(obj)
@@ -158,33 +169,44 @@ def compile_kernel_sources():
 
 
 def build_kernel():
-    build_initramfs()
-    obj_files = compile_kernel_sources()
+    initramfs_to_binary()
+    obj_files = build_kernel_binaries()
     obj_files.append("build/initramfs_bin.o")
     sh(f"{LD} {KERN_LDFLAGS} -o {KERNEL} {' '.join(obj_files)}")
 
 
-def build_iso():
-    build_kernel()
+def build_limine():
     clone_repo(LIMINE_REPO, LIMINE_REPO_ARG, LIMINE_DIR)
-    os.makedirs("iso_root/boot/limine", exist_ok=True)
-    os.makedirs("iso_root/EFI/BOOT", exist_ok=True)
-    sh(f"cp {KERNEL} iso_root/boot/")
-    sh("cp limine.conf iso_root/boot/limine/")
+
+    os.makedirs(f"{ISO_ROOT_DIR}/boot/limine", exist_ok=True)
+    sh(f"cp limine.conf {ISO_ROOT_DIR}/boot/limine/")
     for f in ["limine-bios.sys", "limine-bios-cd.bin", "limine-uefi-cd.bin"]:
-        sh(f"cp {LIMINE_DIR}/{f} iso_root/boot/limine/")
-    sh(f"cp {LIMINE_DIR}/BOOTX64.EFI iso_root/EFI/BOOT/")
-    sh(f"cp {LIMINE_DIR}/BOOTIA32.EFI iso_root/EFI/BOOT/")
+        sh(f"cp {LIMINE_DIR}/{f} {ISO_ROOT_DIR}/boot/limine/")
+
+    os.makedirs(f"{ISO_ROOT_DIR}/EFI/BOOT", exist_ok=True)
+    for f in ["BOOTX64.EFI", "BOOTIA32.EFI"]:
+        sh(f"cp {LIMINE_DIR}/{f} {ISO_ROOT_DIR}/EFI/BOOT/")
+
+
+def build_iso():
+    if not os.path.exists(KERNEL):
+        print(f"Kernel file '{KERNEL}' not found, building it first...")
+        exit(1)
+    os.makedirs(f"{ISO_ROOT_DIR}/boot", exist_ok=True)
+    sh(f"cp {KERNEL} {ISO_ROOT_DIR}/boot/")
+
+    build_limine()
+
     sh(f"xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin\
         -no-emul-boot -boot-load-size 4 -boot-info-table\
         --efi-boot boot/limine/limine-uefi-cd.bin -efi-boot-part\
-        --efi-boot-image --protective-msdos-label iso_root -o {ISO}")
+        --efi-boot-image --protective-msdos-label {ISO_ROOT_DIR} -o {ISO}")
 
 
 def create_disk():
     if not os.path.exists(DISK_IMG):
         sh(f"dd if=/dev/zero of={DISK_IMG} bs=1M count=64")
-        sh(f"mkfs.ext2 -b 1024 {DISK_IMG}")
+        sh(f"sudo mkfs.ext2 -b 1024 {DISK_IMG}")
 
 
 def run_qemu():
@@ -198,7 +220,7 @@ def run_qemu():
 def populate_disk():
     if not os.path.exists(DISK_IMG):
         sh(f"dd if=/dev/zero of={DISK_IMG} bs=1M count=64")
-        sh(f"mkfs.ext2 -b 1024 {DISK_IMG}")
+        sh(f"sudo mkfs.ext2 -b 1024 {DISK_IMG}")
     sh(f"mkdir -p /tmp/{OS_NAME}_mnt")
     sh(f"sudo mount -o loop {DISK_IMG} /tmp/{OS_NAME}_mnt")
     sh(f"sudo mkdir -p /tmp/{OS_NAME}_mnt/etc")
@@ -208,7 +230,7 @@ def populate_disk():
 
 
 def clean():
-    sh("rm -rf build iso_root limine")
+    sh(f"rm -rf build {ISO_ROOT_DIR} {LIMINE_DIR}")
     sh(f"rm -f {KERNEL} {ISO}")
 
 
@@ -216,19 +238,42 @@ def clean_disk():
     sh(f"rm -f {DISK_IMG}")
 
 
-TARGETS = {
-    "all": build_kernel,
-    "iso": build_iso,
-    "run": run_qemu,
-    "clean": clean,
-    "clean-disk": clean_disk,
-    "disk-populate": populate_disk,
-}
+# TARGETS = {
+#     "all": build_kernel,
+#     "iso": build_iso,
+#     "run": run_qemu,
+#     "clean": clean,
+#     "clean-disk": clean_disk,
+#     "disk-populate": populate_disk,
+# }
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else "all"
-    if target not in TARGETS:
-        print(f"Unknown target: '{target}'")
-        print(f"Available: {', '.join(TARGETS)}")
-        sys.exit(1)
-    TARGETS[target]()
+
+    parser = argparse.ArgumentParser(
+        prog="build.py",
+        description=f"{OS_NAME} build script"
+    )
+
+    parser.add_argument("-b", "--build", choices=["all", "a", "kernel", "k", "iso", "i"],
+                        nargs="?", const="all", metavar="METHOD", help="METHOD in [all, iso]")
+    parser.add_argument("-r", "--run", action="store_true", help="run a vm with OS img")
+
+    args = parser.parse_args()
+
+    print(args)
+
+    kwargs = dict(args._get_kwargs())
+    for arg in kwargs:
+        val = kwargs[arg]
+
+        if arg == "build":
+            if val in ["all", 'a']:
+                build_kernel()
+                build_iso()
+            if val in ["iso", 'i']:
+                build_iso()
+            if val in ["kernel", 'k']:
+                build_kernel()
+        if arg == "run" and val:
+            run_qemu()
+        print(f"arg {arg}, val {val}")
