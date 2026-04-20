@@ -3,14 +3,13 @@
 
 import glob
 import os
-import subprocess
 import sys
 
 CC = "gcc"
 LD = "ld"
 AS = "nasm"
 
-CFLAGS = [
+CFLAGS_LIST = [
     "-m64",
     "-ffreestanding",
     "-fno-stack-protector",
@@ -28,9 +27,9 @@ CFLAGS = [
     "-Iinclude",
 ]
 
-ASFLAGS = ["-f", "elf64"]
+ASFLAGS_LIST = ["-f", "elf64"]
 
-LDFLAGS = [
+LDFLAGS_LIST = [
     "-m", "elf_x86_64",
     "-nostdlib",
     "-static",
@@ -38,7 +37,7 @@ LDFLAGS = [
     "-z", "max-page-size=0x1000",
 ]
 
-USER_CFLAGS = [
+USER_CFLAGS_LIST = [
     "-m64",
     "-ffreestanding",
     "-fno-stack-protector",
@@ -56,12 +55,18 @@ USER_CFLAGS = [
     "-Iinclude",
 ]
 
-USER_LDFLAGS = [
+USER_LDFLAGS_LIST = [
     "-m", "elf_x86_64",
     "-nostdlib",
     "-static",
     "-T", "userspace/link.ld",
 ]
+
+CFLAGS = ' '.join(CFLAGS_LIST)
+ASFLAGS = ' '.join(ASFLAGS_LIST)
+LDFLAGS = ' '.join(LDFLAGS_LIST)
+USER_CFLAGS = ' '.join(USER_CFLAGS_LIST)
+USER_LDFLAGS = ' '.join(USER_LDFLAGS_LIST)
 
 KERNEL = "kernel.elf"
 ISO = "NocturneOS.iso"
@@ -76,33 +81,25 @@ USER_COMMON = [
 ]
 
 
-def run(cmd, **kwargs):
-    print(" ".join(cmd))
-    result = subprocess.run(cmd, **kwargs)
-    if result.returncode != 0:
-        print(f"Error: command finished with code {result.returncode}")
-        sys.exit(result.returncode)
-
-
-def sh(cmd):
+def sh(cmd: str, no_exit=False):
     print(cmd)
     ret = os.system(cmd)
     if ret != 0:
         print(f"Error: '{cmd}' finished with code {ret}")
-        sys.exit(1)
+        return ret if no_exit else sys.exit(1)
 
 
-def newer(src, dst):
+def newer(src: str, dst: str):
     if not os.path.exists(dst):
         return True
     return os.path.getmtime(src) > os.path.getmtime(dst)
 
 
-def find_files(directory, extension):
+def find_files(directory: str, extension: str):
     return glob.glob(f"{directory}/**/*{extension}", recursive=True)
 
 
-def build_user_binary(out_path, sources):
+def build_user_binary(out_path: str, sources: list[str]):
     os.makedirs("build/ubin", exist_ok=True)
     objs = []
     for src in sources:
@@ -112,10 +109,10 @@ def build_user_binary(out_path, sources):
         if not newer(src, obj):
             continue
         if src.endswith(".c"):
-            run([CC] + USER_CFLAGS + ["-c", src, "-o", obj])
+            sh(f"{CC} {USER_CFLAGS} -c {src} -o {obj}")
         elif src.endswith(".asm"):
-            run([AS] + ASFLAGS + [src, "-o", obj])
-    run([LD] + USER_LDFLAGS + ["-o", out_path] + objs)
+            sh(f"{AS} {ASFLAGS} {src} -o {obj}")
+    sh(f"{LD} {USER_LDFLAGS} -o {out_path} {' '.join(objs)}")
 
 
 def build_userspace():
@@ -138,8 +135,7 @@ def build_initramfs():
         f.write("NocturneOS\n")
     build_userspace()
     sh("cd initramfs && find . | cpio -o -H newc > ../build/initramfs.cpio")
-    run([LD, "-r", "-b", "binary",
-         "build/initramfs.cpio", "-o", "build/initramfs_bin.o"])
+    sh(f"{LD} -r -b binary build/initramfs.cpio -o build/initramfs_bin.o")
 
 
 def get_sources():
@@ -164,9 +160,9 @@ def compile_sources():
         if not newer(src, obj):
             continue
         if kind == "c":
-            run([CC] + CFLAGS + ["-c", src, "-o", obj])
+            sh(f"{CC} {CFLAGS} -c {src} -o {obj}")
         elif kind == "asm":
-            run([AS] + ASFLAGS + [src, "-o", obj])
+            sh(f"{AS} {ASFLAGS} {src} -o {obj}")
     return obj_files
 
 
@@ -174,18 +170,12 @@ def build_kernel():
     build_initramfs()
     obj_files = compile_sources()
     obj_files.append("build/initramfs_bin.o")
-    run([LD] + LDFLAGS + ["-o", KERNEL] + obj_files)
+    sh(f"{LD} {LDFLAGS} -o {KERNEL} {' '.join(obj_files)}")
 
 
 def clone_limine():
     if not os.path.exists(LIMINE_DIR):
-        run([
-            "git", "clone",
-            "--branch=v11.x-binary",
-            "--depth=1",
-            LIMINE_REPO,
-            LIMINE_DIR,
-        ])
+        sh(f"git clone --branch=v11.x-binary --depth=1 {LIMINE_REPO} {LIMINE_DIR}")
 
 
 def build_iso():
@@ -199,50 +189,36 @@ def build_iso():
         sh(f"cp {LIMINE_DIR}/{f} iso_root/boot/limine/")
     sh(f"cp {LIMINE_DIR}/BOOTX64.EFI iso_root/EFI/BOOT/")
     sh(f"cp {LIMINE_DIR}/BOOTIA32.EFI iso_root/EFI/BOOT/")
-    run([
-        "xorriso", "-as", "mkisofs",
-        "-b", "boot/limine/limine-bios-cd.bin",
-        "-no-emul-boot",
-        "-boot-load-size", "4",
-        "-boot-info-table",
-        "--efi-boot", "boot/limine/limine-uefi-cd.bin",
-        "-efi-boot-part",
-        "--efi-boot-image",
-        "--protective-msdos-label",
-        "iso_root", "-o", ISO,
-    ])
+    sh(f"xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin\
+        -no-emul-boot -boot-load-size 4 -boot-info-table\
+        --efi-boot boot/limine/limine-uefi-cd.bin -efi-boot-part\
+        --efi-boot-image --protective-msdos-label iso_root -o {ISO}")
 
 
 def create_disk():
     if not os.path.exists(DISK_IMG):
-        run(["dd", "if=/dev/zero", f"of={DISK_IMG}", "bs=1M", "count=64"])
-        run(["mkfs.ext2", "-b", "1024", DISK_IMG])
+        sh(f"dd if=/dev/zero of={DISK_IMG} bs=1M count=64")
+        sh(f"mkfs.ext2 -b 1024 {DISK_IMG}")
 
 
 def run_qemu():
     build_iso()
     create_disk()
-    run([
-        "qemu-system-x86_64",
-        "-cdrom", ISO,
-        "-drive", f"file={DISK_IMG},format=raw,if=ide,index=1",
-        "-m", "128M",
-        "-vga", "std",
-        "-no-reboot",
-        "-no-shutdown",
-    ])
+    sh(f"qemu-system-x86_64 -cdrom {ISO}\
+        -drive file={DISK_IMG},format=raw,if=ide,index=1\
+        -m 128M -vga std -no-reboot -no-shutdown")
 
 
 def populate_disk():
     if not os.path.exists(DISK_IMG):
-        run(["dd", "if=/dev/zero", f"of={DISK_IMG}", "bs=1M", "count=64"])
-        run(["mkfs.ext2", "-b", "1024", DISK_IMG])
+        sh(f"dd if=/dev/zero of={DISK_IMG} bs=1M count=64")
+        sh(f"mkfs.ext2 -b 1024 {DISK_IMG}")
     sh("mkdir -p /tmp/NocturneOS_mnt")
     sh(f"sudo mount -o loop {DISK_IMG} /tmp/NocturneOS_mnt")
     sh("sudo mkdir -p /tmp/NocturneOS_mnt/etc")
     sh("echo 'hello from ext2' | sudo tee /tmp/NocturneOS_mnt/etc/hello.txt")
     sh("echo 'NocturneOS' | sudo tee /tmp/NocturneOS_mnt/etc/hostname")
-    sh(f"sudo umount /tmp/NocturneOS_mnt")
+    sh("sudo umount /tmp/NocturneOS_mnt")
 
 
 def clean():
