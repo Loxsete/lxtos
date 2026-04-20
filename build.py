@@ -85,6 +85,11 @@ def find_files(directory: str, extension: str):
     return glob.glob(f"{directory}/**/*{extension}", recursive=True)
 
 
+def clone_repo(src_url: str, src_arg: str, dst_dir: str):
+    if not os.path.exists(dst_dir):
+        sh(f"git clone {src_arg} {src_url} {dst_dir}")
+
+
 def build_user_binary(out_path: str, sources: list[str]):
     os.makedirs("build/ubin", exist_ok=True)
     objs = []
@@ -159,14 +164,9 @@ def build_kernel():
     sh(f"{LD} {KERN_LDFLAGS} -o {KERNEL} {' '.join(obj_files)}")
 
 
-def clone_limine():
-    if not os.path.exists(LIMINE_DIR):
-        sh(f"git clone --branch=v11.x-binary --depth=1 {LIMINE_REPO} {LIMINE_DIR}")
-
-
 def build_iso():
     build_kernel()
-    clone_limine()
+    clone_repo(LIMINE_REPO, LIMINE_REPO_ARG, LIMINE_DIR)
     os.makedirs("iso_root/boot/limine", exist_ok=True)
     os.makedirs("iso_root/EFI/BOOT", exist_ok=True)
     sh(f"cp {KERNEL} iso_root/boot/")
