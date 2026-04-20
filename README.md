@@ -11,5 +11,5 @@ No Makefile cauze i dont like him
 Build typst docs and open pdf file (on arch):
 ```
 yay -S typst
-typst compile docs.typ
+typst compile docs/docs.typ
 ```
