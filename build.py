@@ -238,15 +238,6 @@ def clean_disk():
     sh(f"rm -f {DISK_IMG}")
 
 
-# TARGETS = {
-#     "all": build_kernel,
-#     "iso": build_iso,
-#     "run": run_qemu,
-#     "clean": clean,
-#     "clean-disk": clean_disk,
-#     "disk-populate": populate_disk,
-# }
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -256,25 +247,39 @@ if __name__ == "__main__":
 
     parser.add_argument("-b", "--build", choices=["all", "a", "kernel", "k", "iso", "i"],
                         nargs="?", const="all", metavar="METHOD",
-                        help="METHOD in [all/a, kernel/k, iso/i]\n default: all")
-    parser.add_argument("-r", "--run", action="store_true", help="run a vm with OS img")
+                        help="METHOD in [all/a, kernel/k, iso/i], default: all")
+    parser.add_argument("-r", "--run", action="store_true",
+                        help="run a vm with OS img")
+    parser.add_argument("-c", "--clean", choices=["all", "a", "disk", "d"],
+                        nargs="?", const="all", metavar="METHOD",
+                        help="METHOD in [all/a, disk/d], default: all")
+    parser.add_argument("-p", "--populate-disk", action="store_true",
+                        help="populate disk image with default files")
 
     args = parser.parse_args()
 
-    print(args)
-
     kwargs = dict(args._get_kwargs())
-    for arg in kwargs:
-        val = kwargs[arg]
+    for arg, val in kwargs.items():
+        if val is None or val is False:
+            continue
 
         if arg == "build":
-            if val in ["all", 'a']:
+            if val in ["all", "a"]:
                 build_kernel()
                 build_iso()
-            if val in ["iso", 'i']:
+            elif val in ["iso", "i"]:
                 build_iso()
-            if val in ["kernel", 'k']:
+            elif val in ["kernel", "k"]:
                 build_kernel()
-        if arg == "run" and val:
+
+        elif arg == "run":
             run_qemu()
-        print(f"arg {arg}, val {val}")
+
+        elif arg == "clean":
+            if val in ["all", "a"]:
+                clean()
+            elif val in ["disk", "d"]:
+                clean_disk()
+
+        elif arg == "populate_disk":
+            populate_disk()
