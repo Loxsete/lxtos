@@ -106,6 +106,7 @@ static void try_exec(const char *name, char **argv, int argc)
 
 void main(void)
 {
+    sys_getcwd(cwd, MAX_PATH);
     static char input[MAX_INPUT];
     while (1) {
         read_hostname(hostname);
