@@ -38,10 +38,15 @@ static void cmd_pwd(void)
 
 static void cmd_cd(const char *arg)
 {
-    if (!arg) { u_strcpy(cwd, "/", MAX_PATH); return; }
+    if (!arg) {
+        sys_chdir("/");
+        sys_getcwd(cwd, MAX_PATH);
+        return;
+    }
     char path[MAX_PATH];
     resolve_path(arg, path);
-    u_strcpy(cwd, path, MAX_PATH);
+    if (sys_chdir(path) == 0)
+        sys_getcwd(cwd, MAX_PATH);
 }
 
 static void cmd_help(void)
@@ -77,28 +82,24 @@ static void try_exec(const char *name, char **argv, int argc)
     if (name[0] == '/' || (name[0] == '.' && name[1] == '/')) {
         resolve_path(name, path);
     } else {
-        // search in bin
         u_strcpy(path, "/bin/", MAX_PATH);
         int len = u_strlen(path);
         for (int i = 0; name[i] && len < MAX_PATH-1; i++)
             path[len++] = name[i];
         path[len] = 0;
     }
-
     if (sys_fsize(path) == (uint64_t)-1) {
         u_puts("\nunknown command: ");
         u_puts(name);
         u_puts("\n");
         return;
     }
-
     const char *child_argv[16];
     child_argv[0] = path;
     int child_argc = 1;
     for (int i = 1; i < argc && child_argc < 15; i++)
         child_argv[child_argc++] = argv[i];
     child_argv[child_argc] = 0;
-
     int64_t r = sys_exec(path, child_argv);
     if (r != 0) { u_puts("\nexec failed\n"); }
 }
@@ -106,23 +107,18 @@ static void try_exec(const char *name, char **argv, int argc)
 void main(void)
 {
     static char input[MAX_INPUT];
-
     while (1) {
         read_hostname(hostname);
-
         u_puts("\n[");
         u_puts(hostname);
         u_puts(":");
         u_puts(cwd);
         u_puts("] >> ");
-
         u_gets(input, sizeof(input));
         if (!input[0]) continue;
-
         char *argv[16];
         int argc = parse(input, argv, 16);
         if (argc == 0) continue;
-
         if      (!u_strcmp(argv[0], "exit"))  { u_puts("\n"); sys_exit(); }
         else if (!u_strcmp(argv[0], "clear")) sys_clear();
         else if (!u_strcmp(argv[0], "help"))  cmd_help();
@@ -137,7 +133,6 @@ void main(void)
             u_puts("\n");
         }
         else {
-            /* всё остальное — пробуем как бинарник */
             try_exec(argv[0], argv, argc);
         }
     }

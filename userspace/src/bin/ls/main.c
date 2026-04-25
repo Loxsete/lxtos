@@ -4,11 +4,17 @@
 
 void main(int argc, char **argv)
 {
-    const char *path = (argc > 1) ? argv[1] : "/"; // just folder
+    char cwdbuf[256];
+    const char *path;
+    if (argc > 1) {
+        path = argv[1];         // just folder
+    } else {
+        sys_getcwd(cwdbuf, sizeof(cwdbuf)); // get cwd from kernel
+        path = cwdbuf;
+    }
     char name[256]; // buffer for readdir
     uint32_t i = 0; // index, 0 = first element, 1 = second element..
     int64_t r; // return readdir value
-
     u_puts("\n");
     // sys_readdir(path, index, name_buf)
     // return 1 if folder

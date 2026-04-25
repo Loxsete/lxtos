@@ -14,4 +14,5 @@
 #define SYS_WRITE    11
 #define SYS_EXEC     12
 #define SYS_FSIZE    13
-
+#define SYS_CHDIR    14
+#define SYS_GETCWD   15

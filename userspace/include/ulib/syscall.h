@@ -103,3 +103,17 @@ static inline uint64_t sys_fsize(const char *path)
     );
     return ret;
 }
+
+static inline int64_t sys_chdir(const char *path)
+{
+    uint64_t ret;
+    __asm__ volatile("mov $14,%%rax; int $0x80"
+        : "=a"(ret) : "D"((uint64_t)path) : "memory");
+    return (int64_t)ret;
+}
+
+static inline void sys_getcwd(char *buf, uint64_t size)
+{
+    __asm__ volatile("mov $15,%%rax; int $0x80"
+        :: "D"((uint64_t)buf), "S"(size) : "rax", "memory");
+}

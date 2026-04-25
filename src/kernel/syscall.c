@@ -7,6 +7,8 @@
 #include <fs/vfs.h>
 #include <exec/elf.h>
 
+static char kernel_cwd[256] = "/";
+
 uint64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
 {
     switch (num) {
@@ -85,14 +87,27 @@ uint64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
         return (uint64_t)vnode_write(node, data, 0, size);
     }
     case SYS_EXEC: {
-    const char *path     = (const char *)a1;
-    const char **uargv   = (const char **)a2;
-    return (uint64_t)elf_exec_argv(path, uargv);
+        const char *path     = (const char *)a1;
+        const char **uargv   = (const char **)a2;
+        return (uint64_t)elf_exec_argv(path, uargv);
     }
     case SYS_FSIZE: {
         vfs_node_t *node = vfs_resolve((const char *)a1);
         if (!node || (node->flags & VFS_FLAG_DIR)) return (uint64_t)-1;
         return node->size;
+    }
+    case SYS_CHDIR: {
+        const char *path = (const char *)a1;
+        vfs_node_t *node = vfs_resolve(path);
+        if (!node || !(node->flags & VFS_FLAG_DIR)) return (uint64_t)-1;
+        kstrcpy(kernel_cwd, path, 256);
+        return 0;
+    }   
+    case SYS_GETCWD: {
+        char    *buf  = (char *)a1;
+        uint64_t size = a2;
+        kstrcpy(buf, kernel_cwd, size);
+        return 0;
     }
     default:
         return (uint64_t)-1;
