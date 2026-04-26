@@ -109,6 +109,59 @@ uint64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
         kstrcpy(buf, kernel_cwd, size);
         return 0;
     }
+    case SYS_MOUNT: {
+        const char *source     = (const char *)a1;
+        const char *mountpoint = (const char *)a2;
+
+        vfs_node_t *target = vfs_resolve(mountpoint);
+        if (!target || !(target->flags & VFS_FLAG_DIR))
+        return (uint64_t)-1;
+
+        vfs_node_t *src_node = vfs_resolve(source);
+        if (!src_node)
+            return (uint64_t)-1;
+
+    
+        target->mount = src_node;
+        target->flags |= VFS_FLAG_MOUNTPT;
+
+        int r = vfs_mount(mountpoint, src_node);
+        return (uint64_t)(r == 0 ? 0 : -1);
+    }   
+    case SYS_UMOUNT: {
+        const char *mountpoint = (const char *)a1;
+
+        char parent[256];
+        const char *last = mountpoint;
+        int slash = -1;
+        for (int i = 0; mountpoint[i]; i++)
+            if (mountpoint[i] == '/') slash = i;
+
+        if (slash <= 0) {
+            parent[0] = '/'; parent[1] = '\0';
+            last = mountpoint + slash + 1;
+        } else {
+            kstrcpy(parent, mountpoint, slash + 1);
+            parent[slash] = '\0';
+            last = mountpoint + slash + 1;
+        }
+
+        vfs_node_t *parent_node = vfs_resolve(parent);
+        if (!parent_node || !(parent_node->flags & VFS_FLAG_DIR))
+            return (uint64_t)-1;
+
+        if (!parent_node->ops || !parent_node->ops->finddir)
+            return (uint64_t)-1;
+
+        vfs_node_t *target = parent_node->ops->finddir(parent_node, last);
+        if (!target || !(target->flags & VFS_FLAG_MOUNTPT))
+            return (uint64_t)-1;
+
+        target->mount = NULL;
+        target->flags &= ~VFS_FLAG_MOUNTPT;
+        return 0;
+    }
+
     default:
         return (uint64_t)-1;
     }

@@ -22,12 +22,18 @@ int vfs_mount(const char *path, vfs_node_t *fs_root)
     kstrcpy(mount_table[mount_count].path, path, VFS_MAX_PATH);
     mount_table[mount_count].root = fs_root;
     mount_count++;
-    if (kstrcmp(path, "/") != 0) {
-        vfs_node_t *node = vfs_resolve(path);
-        if (node) node->mount = fs_root;
-    }
     return 0;
 }
+
+int vfs_umount(vfs_node_t *node)
+{
+    if (!node || !(node->flags & VFS_FLAG_MOUNTPT))
+        return -1;
+    node->mount = NULL;
+    node->flags &= ~VFS_FLAG_MOUNTPT;
+    return 0;
+}
+
 
 static int split_path(const char *path, char parts[][VFS_MAX_NAME], int max_parts)
 {

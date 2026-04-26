@@ -16,3 +16,5 @@
 #define SYS_FSIZE    13
 #define SYS_CHDIR    14
 #define SYS_GETCWD   15
+#define SYS_MOUNT   16
+#define SYS_UMOUNT  17

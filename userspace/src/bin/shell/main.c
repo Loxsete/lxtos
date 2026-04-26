@@ -51,7 +51,7 @@ static void cmd_cd(const char *arg)
 
 static void cmd_help(void)
 {
-    u_puts("\nBuiltins: cd, pwd, echo, clear, exit, help\n");
+    u_puts("\nBuiltins: cd, pwd, clear, exit, help\n");
     u_puts("Other commands run from /bin/<name>\n");
 }
 

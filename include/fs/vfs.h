@@ -53,6 +53,9 @@ void        vfs_init(void);
 // Mount a filesystem
 int         vfs_mount(const char *path, vfs_node_t *fs_root);
 
+// Umount a filesystem
+int         vfs_umount(vfs_node_t *node);
+
 // Resolve a path to a vfs_node
 vfs_node_t *vfs_resolve(const char *path);
 

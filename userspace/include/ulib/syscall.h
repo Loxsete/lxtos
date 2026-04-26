@@ -117,3 +117,31 @@ static inline void sys_getcwd(char *buf, uint64_t size)
     __asm__ volatile("mov $15,%%rax; int $0x80"
         :: "D"((uint64_t)buf), "S"(size) : "rax", "memory");
 }
+
+static inline int64_t sys_mount(const char *source,
+                                 const char *mountpoint,
+                                 const char *fstype)
+{
+    uint64_t ret;
+    __asm__ volatile(
+        "mov $16, %%rax; int $0x80"
+        : "=a"(ret)
+        : "D"((uint64_t)source),
+          "S"((uint64_t)mountpoint),
+          "d"((uint64_t)fstype)
+        : "memory"
+    );
+    return (int64_t)ret;
+}
+
+static inline int64_t sys_umount(const char *mountpoint)
+{
+    uint64_t ret;
+    __asm__ volatile(
+        "mov $17, %%rax; int $0x80"
+        : "=a"(ret)
+        : "D"((uint64_t)mountpoint)
+        : "memory"
+    );
+    return (int64_t)ret;
+}
