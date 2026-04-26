@@ -110,24 +110,20 @@ uint64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
         return 0;
     }
     case SYS_MOUNT: {
-        const char *source     = (const char *)a1;
-        const char *mountpoint = (const char *)a2;
-
-        vfs_node_t *target = vfs_resolve(mountpoint);
-        if (!target || !(target->flags & VFS_FLAG_DIR))
-        return (uint64_t)-1;
-
-        vfs_node_t *src_node = vfs_resolve(source);
-        if (!src_node)
-            return (uint64_t)-1;
-
-    
-        target->mount = src_node;
-        target->flags |= VFS_FLAG_MOUNTPT;
-
-        int r = vfs_mount(mountpoint, src_node);
-        return (uint64_t)(r == 0 ? 0 : -1);
-    }   
+         const char *source     = (const char *)a1;
+         const char *mountpoint = (const char *)a2;
+     
+         vfs_node_t *target = vfs_resolve(mountpoint);
+         if (!target || !(target->flags & VFS_FLAG_DIR))
+             return (uint64_t)-1;
+     
+         vfs_node_t *src_node = vfs_resolve(source);
+         if (!src_node)
+             return (uint64_t)-1;
+     
+         int r = vfs_mount(mountpoint, src_node);
+         return (uint64_t)(r == 0 ? 0 : -1);
+    } 
     case SYS_UMOUNT: {
         const char *mountpoint = (const char *)a1;
 

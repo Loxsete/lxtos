@@ -17,8 +17,15 @@ void vfs_init(void)
 int vfs_mount(const char *path, vfs_node_t *fs_root)
 {
     if (mount_count >= VFS_MAX_MOUNTS) return -1;
-    if (kstrcmp(path, "/") == 0)
+    if (kstrcmp(path, "/") == 0) {
         vfs_root = fs_root;
+    } else {
+        vfs_node_t *node = vfs_resolve(path);
+        if (node) {
+            node->mount = fs_root;
+            node->flags |= VFS_FLAG_MOUNTPT;
+        }
+    }
     kstrcpy(mount_table[mount_count].path, path, VFS_MAX_PATH);
     mount_table[mount_count].root = fs_root;
     mount_count++;
