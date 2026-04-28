@@ -24,8 +24,9 @@ void main(int argc, char **argv)
         u_puts("  ");
         u_puts(name);
         if (r == 1) u_puts("/");
-        u_puts("\n");
-        i++; // go to next element
+        u_puts(" ");
+        i++;
     }
+    u_puts("\n");
     sys_exit();
 }
